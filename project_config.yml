@@ -1,0 +1,13 @@
+location_url: "https://hhnk.lizard.net/api/v4/timeseries/"
+
+timeseries_url: "https://hhnk.lizard.net/api/v4/timeseries/{}/events/"
+start_date: "2025-02-01"
+end_date: "2025-06-01"
+headers:
+  Content-Type: "application/json"
+
+pump_names: ["Rg. Blauwe Keet", "Rg. Kooypunt", "Rg. Julianadorp"]
+data_codes: ["WNS2369.h", "P.radar.1h"]
+
+dev_catalog: "mlops_dev"
+dev_schema: "jbaars"
