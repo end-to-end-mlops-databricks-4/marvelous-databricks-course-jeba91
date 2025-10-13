@@ -16,6 +16,9 @@ dependencies = [
     "pydantic==2.11.7",
     "loguru==0.7.3",
     "python-dotenv==1.1.1",
+    "neuralprophet>=0.8.0",
+    "pytorch-lightning>=1.9.5",
+    "torch<2.6.0",
 ]
 
 dynamic = ['version']

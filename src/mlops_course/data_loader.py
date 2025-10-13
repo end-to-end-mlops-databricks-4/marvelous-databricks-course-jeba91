@@ -132,7 +132,6 @@ class TimeseriesDataLoader:
         time_series_events = time_series_events.reindex(hour_index)
         time_series_events = time_series_events.reset_index(names=["timestamp"])
         time_series_events["pumpcode"] = location
-        # time_series_events['code'] = code
 
         return time_series_events
 
@@ -144,7 +143,7 @@ class TimeseriesDataLoader:
 
         """
         all_series_list = []
-        join_key = ["timestamp", "pumpcode"]
+        join_key = self.config.primary_keys
 
         for pump_name in self.config.pump_names:
             pump_series_list = []
@@ -155,9 +154,20 @@ class TimeseriesDataLoader:
 
             pump_df = reduce(lambda left, right: pd.merge(left, right, on=join_key, how="left"), pump_series_list)
 
+
             all_series_list.append(pump_df)
 
         self.df_dataset = pd.concat(all_series_list, axis=0)
+
+        first_cols = self.config.primary_keys
+        last_col = 'WNS2369.h'
+
+        all_cols = self.df_dataset.columns.tolist()
+        middle_cols = [col for col in all_cols if col not in first_cols and col != last_col]
+
+        new_order = first_cols + middle_cols + [last_col]
+
+        self.df_dataset = self.df_dataset[new_order]
 
     def train_test_split(self, ratio: int = 0.8) -> None:
         """Split the dataset into training and testing sets based on time.
@@ -185,7 +195,10 @@ class TimeseriesDataLoader:
 
         # --- 1. Calculate the split timestamp for *each* pump using groupby ---
         # Group by pumpcode and aggregate to find the split date/time
-        split_info = df.groupby("pumpcode")["timestamp"].agg(["min", "max"])
+        timestamp = self.config.primary_keys[0]
+        pumpcode = self.config.primary_keys[1]
+
+        split_info = df.groupby(pumpcode)[timestamp].agg(["min", "max"])
         split_info["duration"] = split_info["max"] - split_info["min"]
         split_info["train_duration"] = split_info["duration"] * ratio
 
@@ -199,8 +212,8 @@ class TimeseriesDataLoader:
 
         # --- 3. Perform a single vectorized split on the entire DataFrame ---
         # Crucial: Use .copy() here to explicitly create the new, independent DataFrames
-        train_df = df.loc[df["timestamp"] < df["split_ts"]].copy()
-        test_df = df.loc[df["timestamp"] >= df["split_ts"]].copy()
+        train_df = df.loc[df[timestamp] < df["split_ts"]].copy()
+        test_df = df.loc[df[timestamp] >= df["split_ts"]].copy()
 
         # Remove the temporary split_ts column if not needed
         self.train_df = train_df.drop(columns=["split_ts"])
@@ -211,9 +224,9 @@ class TimeseriesDataLoader:
         train_set = self.spark.createDataFrame(self.train_df)
         test_set = self.spark.createDataFrame(self.test_df)
 
-        train_set.write.mode("append").saveAsTable(
+        train_set.write.mode("overwrite").saveAsTable(
             f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set"
         )
-        test_set.write.mode("append").saveAsTable(
+        test_set.write.mode("overwrite").saveAsTable(
             f"{self.config.dev_catalog}.{self.config.dev_schema}.test_set"
         )

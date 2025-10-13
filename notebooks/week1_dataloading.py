@@ -6,8 +6,8 @@
 
 # COMMAND ----------
 
-from src.mlops_course.config import TimeseriesConfig
-from src.mlops_course.data_loader import TimeseriesDataLoader
+from mlops_course.config import TimeseriesConfig
+from mlops_course.data_loader import TimeseriesDataLoader
 from pyspark.sql import SparkSession
 
 config = TimeseriesConfig.from_yaml('../project_config.yml')
@@ -18,14 +18,11 @@ data_loader = TimeseriesDataLoader(config, spark)
 data_loader.load_data()
 print(data_loader.df_dataset)
 
-# data_loader.df_dataset.plot(x='timestamp', y='P.radar.1h')
-
-
 # COMMAND ----------
+
 data_loader.train_test_split()
-# COMMAND ----------
 
 data_loader.train_df
 
-# COMMAND ----------
 data_loader.save_to_catalog()
+# COMMAND ----------
