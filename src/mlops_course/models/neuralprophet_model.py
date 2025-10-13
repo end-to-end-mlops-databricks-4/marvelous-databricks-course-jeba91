@@ -192,7 +192,7 @@ class NeuralProphetModel:
             alias="latest-model",
             version=latest_version,
         )
-        logger.info(f"✅ Model alias changed to 'latest-model'")
+        logger.info("✅ Model alias changed to 'latest-model'")
 
     # def retrieve_current_run_dataset(self) -> DatasetSource:
     #     """Retrieve MLflow run dataset.

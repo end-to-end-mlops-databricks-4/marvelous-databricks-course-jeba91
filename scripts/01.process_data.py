@@ -13,7 +13,7 @@ root_path = Path(__file__).resolve().parent
 
 logger.info("Starting data download from Lizard data portal")
 
-config = TimeseriesConfig.from_yaml(root_path/'../project_config.yml')
+config = TimeseriesConfig.from_yaml(root_path / "../project_config.yml")
 spark = SparkSession.builder.getOrCreate()
 
 data_loader = TimeseriesDataLoader(config, spark)

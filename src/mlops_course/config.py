@@ -41,6 +41,7 @@ class TimeseriesConfig(BaseModel):
             config_data = safe_load(file)
         return cls(**config_data)
 
+
 class Tags(BaseModel):
     """Represents a set of tags for a Git commit.
 

@@ -154,13 +154,12 @@ class TimeseriesDataLoader:
 
             pump_df = reduce(lambda left, right: pd.merge(left, right, on=join_key, how="left"), pump_series_list)
 
-
             all_series_list.append(pump_df)
 
         self.df_dataset = pd.concat(all_series_list, axis=0)
 
         first_cols = self.config.primary_keys
-        last_col = 'WNS2369.h'
+        last_col = "WNS2369.h"
 
         all_cols = self.df_dataset.columns.tolist()
         middle_cols = [col for col in all_cols if col not in first_cols and col != last_col]
@@ -224,9 +223,5 @@ class TimeseriesDataLoader:
         train_set = self.spark.createDataFrame(self.train_df)
         test_set = self.spark.createDataFrame(self.test_df)
 
-        train_set.write.mode("overwrite").saveAsTable(
-            f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set"
-        )
-        test_set.write.mode("overwrite").saveAsTable(
-            f"{self.config.dev_catalog}.{self.config.dev_schema}.test_set"
-        )
+        train_set.write.mode("overwrite").saveAsTable(f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set")
+        test_set.write.mode("overwrite").saveAsTable(f"{self.config.dev_catalog}.{self.config.dev_schema}.test_set")
