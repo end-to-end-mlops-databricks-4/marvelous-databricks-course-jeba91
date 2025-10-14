@@ -8,7 +8,7 @@
 # COMMAND ----------
 import mlflow
 from mlops_course.config import TimeseriesConfig, Tags
-from mlops_course.models.neuralprophet_model import NeuralProphetModel
+from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 from pyspark.sql import SparkSession
 
 # Configure tracking uri
@@ -21,9 +21,15 @@ spark = SparkSession.builder.getOrCreate()
 tags = Tags(**{"git_sha": "abcd12345", "branch": "week2"})
 
 neural_model = NeuralProphetModel(config, tags, spark)
+neural_model.load_data()
 
 # COMMAND ----------
-neural_model.load_data()
+neural_model.create_feature_table()
+
+# COMMAND ----------
+neural_model.load_data_feature_lookup(config.pump_names[0], True)
+
+# COMMAND ----------
 neural_model.train(config.pump_names[0])
 
 # COMMAND ----------
