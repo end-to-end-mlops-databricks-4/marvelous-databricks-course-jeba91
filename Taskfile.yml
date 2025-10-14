@@ -1,4 +1,4 @@
-version: '3'
+version: "3"
 dotenv: [.env]
 
 vars:
@@ -22,10 +22,17 @@ tasks:
   sync-test:
     desc: Sync only test dependencies
     cmds:
-        - rm -rf .venv
-        - task: create-venv
-        - uv sync --extra test
-        # - source .venv/Scripts/activate && uv sync --extra test # Activate and sync
+      - rm -rf .venv
+      - task: create-venv
+      - uv sync --extra test
+      # - source .venv/Scripts/activate && uv sync --extra test # Activate and sync
+
+  test:
+    desc: Run unit test and coverage
+    cmds:
+      - task: sync-test
+      - uv run --extra test pytest
+      - 'echo "Note: you can open the HTML report with: open _artifact/coverage_re/index.html"'
 
   lint:
     desc: Run pre-commit hooks
