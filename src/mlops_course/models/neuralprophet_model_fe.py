@@ -146,7 +146,9 @@ class NeuralProphetModel:
                 logger.info(f"🔄 Processing features for pump code: {pump_code}")
 
                 # Get features for this pump code
-                df_features = self.prepare_features(pump_code=pump_code, train_set=test_train, temp_np_model=temp_np_model)
+                df_features = self.prepare_features(
+                    pump_code=pump_code, train_set=test_train, temp_np_model=temp_np_model
+                )
 
                 # Add pump_code back to the features
                 df_features[pumpcode_key] = pump_code
@@ -194,7 +196,7 @@ class NeuralProphetModel:
             Created by {self.tags.get("author", "jeba91")} on {current_time}'
         """)
 
-    def load_data_feature_lookup(self, pumpcode:str, train_mode:bool) -> None:
+    def load_data_feature_lookup(self, pumpcode: str, train_mode: bool) -> None:
         """Load training and testing data with feature lookups."""
         logger.info("🔄 Loading data from Databricks tables...")
 
@@ -216,8 +218,7 @@ class NeuralProphetModel:
             spark_set.alias("spark")
             .join(
                 feature_table.alias("features"),
-                (col("spark.pumpcode") == col("features.pumpcode"))
-                & (col("spark.ds") == col("features.ds")),
+                (col("spark.pumpcode") == col("features.pumpcode")) & (col("spark.ds") == col("features.ds")),
                 "left",
             )
             # First select all columns from train_set
