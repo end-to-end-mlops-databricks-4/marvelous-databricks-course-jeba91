@@ -17,6 +17,8 @@ from loguru import logger
 from mlflow import MlflowClient
 from mlflow.models import infer_signature
 from neuralprophet import NeuralProphet
+from neuralprophet import load as npload
+from neuralprophet import save as npsave
 from pandas import DataFrame
 from pyspark.sql import SparkSession
 
@@ -28,8 +30,9 @@ class CustomNeuralProphetPredictor(mlflow.pyfunc.PythonModel):
 
     def load_context(self, context: object) -> None:
         """Load the trained NeuralProphet model from artifacts."""
-        # The 'np_model' artifact key must match what you log in log_model
-        self.np_model = context.artifacts["np_model"]
+        # The 'data' key points to the file path set by the data_path parameter in log_model
+        model_path = context.artifacts["model"]
+        self.np_model = npload(model_path)
 
     def predict(self, model_input: pd.DataFrame) -> pd.DataFrame:
         """Setups custom data preparation and prediction logic.
@@ -50,7 +53,7 @@ class CustomNeuralProphetPredictor(mlflow.pyfunc.PythonModel):
         forecast = self.np_model.predict(model_input)
 
         # Filter and return the relevant output columns
-        return forecast[["ds", "yhat1"]].rename(columns={"yhat1": "prediction"})
+        return forecast[["ds", "yhat1", "yhat1 5.0%", "yhat1 95.0%"]]
 
 
 class NeuralProphetModel:
@@ -294,7 +297,7 @@ class NeuralProphetModel:
                 # Log the model
                 signature = infer_signature(
                     model_input=df_features,
-                    model_output=prediction[["ds", "yhat1","yhat1 5.0%","yhat1 95.0%"]],
+                    model_output=prediction[["ds", "yhat1", "yhat1 5.0%", "yhat1 95.0%"]],
                 )
                 dataset = mlflow.data.from_spark(
                     self.train_set_spark,
@@ -303,13 +306,17 @@ class NeuralProphetModel:
                 )
                 mlflow.log_input(dataset, context="training")
 
+                # 1. Save the full NeuralProphet object locally using NeuralProphet save
+                model_path = f"model_{pump_code}.np"
+                npsave(self.np_model[pump_code], model_path)
+                logger.info(f"💾 NeuralProphet model object saved to {model_path}")
+
                 # Use mlflow.pyfunc.log_model with the custom PythonModel class
                 mlflow.pyfunc.log_model(
-                    python_model=CustomNeuralProphetPredictor(),
-                    artifact_path="neuralprophet-pyfunc-model",  # Use a distinct artifact path
-                    artifacts={"np_model": self.np_model[pump_code]},  # Log the full NeuralProphet object
+                    python_model=CustomNeuralProphetPredictor(),  # The custom logic
+                    artifact_path="neuralprophet-pyfunc-model",
+                    artifacts={"model": model_path},
                     signature=signature,
-                    # Optionally add dependencies here if needed, or rely on Databricks auto-detection
                 )
                 logger.info("✅ Full NeuralProphet model logged via custom pyfunc wrapper.")
 
@@ -318,7 +325,7 @@ class NeuralProphetModel:
         logger.info("🔄 Registering the model in UC...")
         pump_code_str = pump_code.replace(" ", "_").replace(".", "_").replace("__", "_")
         registered_model = mlflow.register_model(
-            model_uri=f"runs:/{self.nested_run_id[pump_code]}/neuralprophet-model",
+            model_uri=f"runs:/{self.nested_run_id[pump_code]}/neuralprophet-pyfunc-model",
             name=f"{self.config.dev_catalog}.{self.config.dev_schema}.sewage_pump_{pump_code_str}",
             tags=self.tags,
         )
