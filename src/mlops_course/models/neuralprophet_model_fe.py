@@ -272,8 +272,6 @@ class NeuralProphetModel:
 
                 df_features = self.prepare_sewagepump_set(pump_code, train_set=False)
                 test_results = self.np_model[pump_code].test(df_features)
-
-                df_features = df_features.drop(columns=["y"])
                 prediction = self.np_model[pump_code].predict(df_features)
 
                 mae_val = test_results["MAE_val"]
@@ -296,7 +294,7 @@ class NeuralProphetModel:
                 # Log the model
                 signature = infer_signature(
                     model_input=df_features,
-                    model_output=prediction[["ds", "yhat1"]],
+                    model_output=prediction[["ds", "yhat1","yhat1 5.0%","yhat1 95.0%"]],
                 )
                 dataset = mlflow.data.from_spark(
                     self.train_set_spark,
