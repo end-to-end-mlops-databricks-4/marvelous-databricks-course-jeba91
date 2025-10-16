@@ -1,15 +1,16 @@
 # Databricks notebook source
-%pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
+# MAGIC %pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
 
 # COMMAND ----------
-%load_ext autoreload
-%autoreload 2
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
 
 # COMMAND ----------
 import mlflow
-from mlops_course.config import TimeseriesConfig, Tags
-from mlops_course.models.neuralprophet_model import NeuralProphetModel
 from pyspark.sql import SparkSession
+
+from mlops_course.config import Tags, TimeseriesConfig
+from mlops_course.models.neuralprophet_model import NeuralProphetModel
 
 # Configure tracking uri
 mlflow.set_tracking_uri("databricks")

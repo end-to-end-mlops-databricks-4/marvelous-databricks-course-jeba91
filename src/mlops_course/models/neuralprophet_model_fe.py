@@ -10,10 +10,12 @@ from datetime import datetime
 
 import mlflow
 import pandas as pd
+from databricks import feature_engineering
+from databricks.feature_engineering import FeatureLookup
 from loguru import logger
 from mlflow import MlflowClient
 from mlflow.models import infer_signature
-from neuralprophet import NeuralProphet, df_utils
+from neuralprophet import NeuralProphet
 from pandas import DataFrame
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
@@ -42,6 +44,8 @@ class NeuralProphetModel:
         self.nested_run_id: dict[str, str] = {}
         self.np_model: dict[str, NeuralProphet] = {}
         self.df: pd.DataFrame = None
+        self.fe = feature_engineering.FeatureEngineeringClient()
+        self.feature_table_name = f"{self.config.dev_catalog}.{self.config.dev_schema}.sewagepumps_feature_table"
 
         self.tags = tags.model_dump()
 
@@ -55,10 +59,6 @@ class NeuralProphetModel:
         self.train_set_spark = self.spark.table(f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set")
         self.test_set_spark = self.spark.table(f"{self.config.dev_catalog}.{self.config.dev_schema}.test_set")
 
-        for key, value in self.config.neuralprophet_rename.items():
-            self.train_set_spark = self.train_set_spark.withColumnRenamed(key, value)
-            self.test_set_spark = self.test_set_spark.withColumnRenamed(key, value)
-
         self.train_set = self.train_set_spark.toPandas()
         self.test_set = self.test_set_spark.toPandas()
 
@@ -67,7 +67,7 @@ class NeuralProphetModel:
         logger.info("✅ Data successfully loaded.")
 
     # Create holiday events for neuralprophet model
-    def _make_holiday_events(self) -> pd.DataFrame:
+    def make_holiday_events(self) -> pd.DataFrame:
         """Create dataframe with holiday events."""
         vakanties = self.spark.read.csv(self.config.vacations_file, header=True, inferSchema=True).toPandas()
         df_events = pd.DataFrame(
@@ -100,141 +100,126 @@ class NeuralProphetModel:
 
         return m_weekday
 
-    def prepare_features(self, pump_code: str, train_set: bool, temp_np_model: NeuralProphet) -> DataFrame:
+    def create_pump_feature_table(self) -> None:
+        """Use Spark SQL to create a persistent feature table in Databricks.
+
+        Raises:
+            Exception: If there is an error during the data loading or table creation process.
+
+        Returns:
+            None: The function is executed for its side effect (creating the table).
+
+        """
+        try:
+            # 1. Load the CSV file into a Spark DataFrame
+            pump_df = self.spark.read.csv(
+                self.config.pump_features_file,
+                header=True,
+                inferSchema=True,  # Infer data types for columns
+                sep=",",  # Assuming standard comma separator
+            )
+
+            # 2. Create a temporary SQL view from the DataFrame
+            temp_view_name = "pump_data_temp_view"
+            pump_df.createOrReplaceTempView(temp_view_name)
+            print(f"Temporary view '{temp_view_name}' created successfully.")
+
+            # 3. Use Spark SQL to create a persistent table (the feature table)
+            full_table_name = self.feature_table_name
+            self.spark.sql(f"DROP TABLE IF EXISTS {full_table_name}")
+            create_table_sql = f"""
+                CREATE TABLE IF NOT EXISTS {full_table_name}
+                AS SELECT
+                    CAST(pumpcode AS STRING) AS pumpcode,
+                    CAST(pump_capacity AS DOUBLE) AS pump_capacity,
+                    CAST(pump_residents AS INT) AS pump_residents,
+                    CAST(pump_houses AS INT) AS pump_houses,
+                    CAST(pump_age AS INT) AS pump_age
+                FROM {temp_view_name}
+            """
+
+            self.spark.sql(create_table_sql)
+            print(f"Feature table '{full_table_name}' created/updated successfully from CSV data.")
+
+            lookup_key = self.config.primary_keys[1]
+
+            # Add constraints for lookup keys
+            constraint_sql = []
+            constraint_sql.append(f"ALTER TABLE {full_table_name} ALTER COLUMN {lookup_key} SET NOT NULL")
+
+            constraint_sql.append(
+                f"ALTER TABLE {full_table_name} ADD CONSTRAINT pk_feature_table PRIMARY KEY ({lookup_key})"
+            )
+
+            for sql in constraint_sql:
+                logger.info(f"constraint is {sql}")
+                self.spark.sql(sql)
+
+            logger.info(f"✅ Feature table created successfully at {full_table_name}")
+            logger.info(f"📊 Total number of rows in feature table: {pump_df.count()}")
+
+            # Add table description with metadata
+            current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            self.spark.sql(f"""
+                COMMENT ON TABLE {full_table_name} IS 'Feature table for Neural Prophet model with lookup key: {lookup_key}.
+                Created by {self.tags.get("author", "jeba91")} on {current_time}'
+            """)
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            raise e
+
+    def feature_engineering_db(self) -> None:
+        """Perform feature engineering by linking data with feature tables.
+
+        Creates a training set using FeatureLookup and FeatureFunction.
+        """
+        self.training_set = self.fe.create_training_set(
+            df=self.train_set_spark,
+            label=None,
+            feature_lookups=[
+                FeatureLookup(
+                    table_name=self.feature_table_name,
+                    feature_names=["pump_capacity", "pump_residents", "pump_houses", "pump_age"],
+                    lookup_key="pumpcode",
+                ),
+            ],
+        )
+
+        self.test_set = self.fe.create_training_set(
+            df=self.test_set_spark,
+            label=None,
+            feature_lookups=[
+                FeatureLookup(
+                    table_name=self.feature_table_name,
+                    feature_names=["pump_capacity", "pump_residents", "pump_houses", "pump_age"],
+                    lookup_key="pumpcode",
+                ),
+            ],
+        )
+
+        self.Xy_train = self.training_set.load_df().toPandas()
+        self.Xy_test = self.test_set.load_df().toPandas()
+
+        logger.info("✅ Feature engineering completed.")
+
+    def prepare_sewagepump_set(self, pump_code: str, train_set: bool) -> DataFrame:
         """Add the weekday, season and holiday info."""
         pumpcode_key = self.config.primary_keys[1]
 
         if train_set:
-            df_pump = self.train_set.loc[self.train_set[pumpcode_key] == pump_code]
+            df_pump = self.Xy_train.loc[self.train_set[pumpcode_key] == pump_code]
         else:
-            df_pump = self.test_set.loc[self.test_set[pumpcode_key] == pump_code]
+            df_pump = self.Xy_test.loc[self.test_set[pumpcode_key] == pump_code]
 
-        df_pump = df_pump.drop(columns=pumpcode_key)
-
-        df_pump = df_utils.add_weekday_condition(df_pump)
-        df_pump = df_utils.add_quarter_condition(df_pump)
-
-        # Create data with model function
-        df_events = self._make_holiday_events()
-        df_pump = temp_np_model.create_df_with_events(df_pump, df_events)
-
-        return df_pump
-
-    def _get_lookup_keys(self) -> list[str]:
-        """Get the list of columns to use as lookup keys."""
-        pumpcode_key = self.config.primary_keys[1]
-        return [pumpcode_key, "ds"]  # ds is the datetime column in NeuralProphet format
-
-    def create_feature_table(self) -> None:
-        """Create a feature table with lookup keys from the prepared features."""
-        logger.info("🔄 Creating feature table...")
-
-        # Get unique pump codes
-        pumpcode_key = self.config.primary_keys[1]
-        unique_pump_codes = self.train_set[pumpcode_key].unique()
-        logger.info(f"📊 Processing features for {len(unique_pump_codes)} unique pump codes")
-
-        # Initialize an empty list to store feature DataFrames
-        feature_dfs = []
-
-        # Initialize model
-        temp_np_model = self.model_weekend()
-
-        # Process each pump code
-        for test_train in [True, False]:
-            for pump_code in unique_pump_codes:
-                logger.info(f"🔄 Processing features for pump code: {pump_code}")
-
-                # Get features for this pump code
-                df_features = self.prepare_features(
-                    pump_code=pump_code, train_set=test_train, temp_np_model=temp_np_model
-                )
-
-                # Add pump_code back to the features
-                df_features[pumpcode_key] = pump_code
-
-                # Append to our list
-                feature_dfs.append(df_features)
-
-        # Combine all feature DataFrames
-        combined_features = pd.concat(feature_dfs, ignore_index=True)
-
-        # Convert to Spark DataFrame
-        spark_features = self.spark.createDataFrame(combined_features)
-
-        # Get lookup keys
-        lookup_keys = self._get_lookup_keys()
-
-        # Write to Delta table
-        table_name = f"{self.config.dev_catalog}.{self.config.dev_schema}.feature_table"
-
-        # Drop the table if it exists
-        self.spark.sql(f"DROP TABLE IF EXISTS {table_name}")
-
-        # Write the feature table
-        (spark_features.write.format("delta").option("overwriteSchema", "true").saveAsTable(table_name))
-
-        # Add constraints for lookup keys
-        constraint_sql = []
-        for key in lookup_keys:
-            constraint_sql.append(f"ALTER TABLE {table_name} ALTER COLUMN {key} SET NOT NULL")
-
-        constraint_sql.append(
-            f"ALTER TABLE {table_name} ADD CONSTRAINT pk_feature_table PRIMARY KEY ({', '.join(lookup_keys)})"
-        )
-
-        for sql in constraint_sql:
-            self.spark.sql(sql)
-
-        logger.info(f"✅ Feature table created successfully at {table_name}")
-        logger.info(f"📊 Total number of rows in feature table: {spark_features.count()}")
-
-        # Add table description with metadata
-        current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        self.spark.sql(f"""
-            COMMENT ON TABLE {table_name} IS 'Feature table for Neural Prophet model with lookup keys: {", ".join(lookup_keys)}.
-            Created by {self.tags.get("author", "jeba91")} on {current_time}'
-        """)
-
-    def load_data_feature_lookup(self, pumpcode: str, train_mode: bool) -> None:
-        """Load training and testing data with feature lookups."""
-        logger.info("🔄 Loading data from Databricks tables...")
-
-        # Load feature table
-        feature_table = self.spark.table(f"{self.config.dev_catalog}.{self.config.dev_schema}.feature_table")
-
-        # Get base columns from train_set
-        spark_set = self.train_set_spark if train_mode else self.test_set_spark
-
-        spark_columns = spark_set.columns
-        feature_columns = feature_table.columns
-
-        # Only select columns from feature table that aren't in train_set
-        # Except keep the join keys (ds, pumpcode)
-        additional_columns = [col(f"features.{c}").alias(c) for c in feature_columns if c not in spark_columns]
-
-        # Join with feature table using explicit column names and select only needed columns
-        set_spark = (
-            spark_set.alias("spark")
-            .join(
-                feature_table.alias("features"),
-                (col("spark.pumpcode") == col("features.pumpcode")) & (col("spark.ds") == col("features.ds")),
-                "left",
-            )
-            # First select all columns from train_set
-            .select([col("spark.*")] + additional_columns)
-            .where(col("spark.pumpcode") == pumpcode)
-            .drop(col("spark.pumpcode"))
-        )
-
-        return set_spark.toPandas()
+        return df_pump.drop(columns=pumpcode_key)
 
     def train(self, pump_code: str) -> None:
         """Train the model."""
         logger.info("🚀 Starting training...")
 
         self.np_model[pump_code] = self.model_weekend()
-        df_features = self.load_data_feature_lookup(pump_code, train_mode=True)
+        df_features = self.prepare_sewagepump_set(pump_code, train_mode=True)
         self.np_model[pump_code].fit(df_features)
 
     def log_model(self, pump_code: str) -> None:
@@ -251,7 +236,7 @@ class NeuralProphetModel:
             ) as nested_run:
                 self.nested_run_id[pump_code] = nested_run.info.run_id
 
-                df_features = self.load_data_feature_lookup(pump_code, train_mode=False)
+                df_features = self.prepare_sewagepump_set(pump_code, train_mode=False)
 
                 test_results = self.np_model[pump_code].test(df_features)
                 prediction = self.np_model[pump_code].predict(df_features)

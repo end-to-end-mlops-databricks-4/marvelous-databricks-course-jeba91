@@ -9,19 +9,28 @@ class TimeseriesConfig(BaseModel):
 
     location_url: HttpUrl
     timeseries_url: str
+
     start_date: str
     end_date: str
     headers: dict
+
     pump_names: list
     data_codes: list
+
     dev_catalog: str
     dev_schema: str
+
     vacations_file: str
+    pump_features_file: str
+
     train_test_split: float
     numerical_features: list
     neuralprophet_rename: dict
     target: list
+
     primary_keys: list
+    join_keys: list
+
     experiment_name: str
 
     @property

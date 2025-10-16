@@ -19,6 +19,7 @@ dependencies = [
     "neuralprophet>=0.8.0",
     "pytorch-lightning>=1.9.5",
     "torch<2.6.0",
+    "databricks-feature-engineering>=0.12.1",
 ]
 
 dynamic = ['version']

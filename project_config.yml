@@ -8,7 +8,8 @@ headers:
 
 pump_names: ["Rg. Blauwe Keet", "Rg. Kooypunt", "Rg. Julianadorp"]
 data_codes: ["WNS2369.h", "P.radar.1h"]
-primary_keys: ["timestamp", "pumpcode"]
+join_keys: ["timestamp", "pumpcode"]
+primary_keys: ["ds", "pumpcode"]
 
 neuralprophet_rename: {"P.radar.1h":"precipitation", "WNS2369.h":"y", "timestamp":"ds"}
 numerical_features: ["ds","precipitation"]
@@ -20,5 +21,6 @@ dev_catalog: "mlops_dev"
 dev_schema: "jbaars"
 
 vacations_file: "/Volumes/mlops_dev/jbaars/vacations/vakanties.csv"
+pump_features_file: "/Volumes/mlops_dev/jbaars/feature_table_data/pump_features.csv"
 
 experiment_name: /Shared/sewage_pumps/

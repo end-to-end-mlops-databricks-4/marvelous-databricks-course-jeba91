@@ -3,9 +3,11 @@ from functools import reduce
 import pandas as pd
 import pytz
 import requests
+from neuralprophet import NeuralProphet, df_utils
 from pyspark.sql import SparkSession
 
-from mlops_course.config import TimeseriesConfig
+from mlops_course.config import Tags, TimeseriesConfig
+from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 
 
 class TimeseriesDataLoader:
@@ -19,18 +21,20 @@ class TimeseriesDataLoader:
 
     """
 
-    def __init__(self, config: TimeseriesConfig, spark: SparkSession) -> None:
+    def __init__(self, config: TimeseriesConfig, tags: Tags, spark: SparkSession) -> None:
         """Initialize the TimeseriesDataLoader.
 
         Args:
             config (TimeseriesConfig): Configuration instance containing API settings
             df (DataFrame): Initialize to load later
+            tags (Tags): git commit tags
             spark (SparkSession): SparkSession of databricks
 
         """
         self.config = config
         self.df: pd.DataFrame = None
         self.spark = spark
+        self.tags_object = tags
 
     def _convert_to_timezone(self, series: pd.Series, tz: str) -> pd.Series:
         """Convert a pandas Series of timestamps to a specified timezone.
@@ -143,7 +147,7 @@ class TimeseriesDataLoader:
 
         """
         all_series_list = []
-        join_key = self.config.primary_keys
+        join_key = self.config.join_keys
 
         for pump_name in self.config.pump_names:
             pump_series_list = []
@@ -158,7 +162,7 @@ class TimeseriesDataLoader:
 
         self.df_dataset = pd.concat(all_series_list, axis=0)
 
-        first_cols = self.config.primary_keys
+        first_cols = self.config.join_keys
         last_col = "WNS2369.h"
 
         all_cols = self.df_dataset.columns.tolist()
@@ -167,6 +171,52 @@ class TimeseriesDataLoader:
         new_order = first_cols + middle_cols + [last_col]
 
         self.df_dataset = self.df_dataset[new_order]
+
+    def save_gold_to_catalog(self) -> None:
+        """Save loaded data df to databricks unity catalog."""
+        gold_set = self.spark.createDataFrame(self.df_dataset)
+        gold_set.write.mode("overwrite").saveAsTable(f"{self.config.dev_catalog}.{self.config.dev_schema}.gold_layer")
+
+    def add_neuralprophet_columns(self) -> None:
+        """Process and merge NeuralProphet columns for multiple pumps.
+
+        This function processes each pump's data individually, adding weekday and quarter
+        conditions, along with holiday events from the NeuralProphet model. It then
+        combines all processed pump dataframes into a single merged dataframe.
+
+        Args:
+            self NeuralProphetModel: self class
+            df_pump (pd.DataFrame): Input dataframe containing pump data.
+
+        Returns:
+            pd.DataFrame: Merged dataframe containing processed data for all pumps.
+
+        """
+        # Initialize an empty list to store dataframes for each pump
+        pump_dataframes = []
+
+        neuralprophet_class: NeuralProphetModel = NeuralProphetModel(self.config, self.tags_object, self.spark)
+        temp_neuralprophet_model: NeuralProphet = neuralprophet_class.model_weekend()
+
+        for pump_name in self.config.pump_names:
+            # Get data for current pump
+            current_pump_df = self.df_dataset.loc[self.df_dataset["pumpcode"] == pump_name]
+            current_pump_df = current_pump_df.rename(columns=self.config.neuralprophet_rename)
+
+            print(current_pump_df.columns)
+
+            current_pump_df = df_utils.add_weekday_condition(current_pump_df)
+            current_pump_df = df_utils.add_quarter_condition(current_pump_df)
+
+            # Create data with model function
+            df_events = neuralprophet_class.make_holiday_events()
+            current_pump_df = temp_neuralprophet_model.create_df_with_events(current_pump_df, df_events)
+
+            # Append the current pump dataframe to our list
+            pump_dataframes.append(current_pump_df)
+
+        # Concatenate all pump dataframes into a single dataframe
+        self.df_features = pd.concat(pump_dataframes, axis=0, ignore_index=True)
 
     def train_test_split(self, ratio: int = 0.8) -> None:
         """Split the dataset into training and testing sets based on time.
@@ -190,7 +240,7 @@ class TimeseriesDataLoader:
             'train_df' and 'test_df' attributes.
 
         """
-        df = self.df_dataset
+        df = self.df_features
 
         # --- 1. Calculate the split timestamp for *each* pump using groupby ---
         # Group by pumpcode and aggregate to find the split date/time

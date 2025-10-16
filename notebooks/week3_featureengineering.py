@@ -1,15 +1,16 @@
 # Databricks notebook source
-%pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
+# MAGIC %pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
 
 # COMMAND ----------
-%load_ext autoreload
-%autoreload 2
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
 
 # COMMAND ----------
 import mlflow
-from mlops_course.config import TimeseriesConfig, Tags
-from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 from pyspark.sql import SparkSession
+
+from mlops_course.config import Tags, TimeseriesConfig
+from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 
 # Configure tracking uri
 mlflow.set_tracking_uri("databricks")
@@ -24,10 +25,10 @@ neural_model = NeuralProphetModel(config, tags, spark)
 neural_model.load_data()
 
 # COMMAND ----------
-neural_model.create_feature_table()
+neural_model.create_pump_feature_table()
 
 # COMMAND ----------
-neural_model.load_data_feature_lookup(config.pump_names[0], True)
+neural_model.feature_engineering_db()
 
 # COMMAND ----------
 neural_model.train(config.pump_names[0])
