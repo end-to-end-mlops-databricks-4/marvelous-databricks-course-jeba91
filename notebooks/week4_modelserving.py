@@ -1,7 +1,5 @@
 # Databricks notebook source
 # MAGIC %pip install mlops_course-0.0.1-py3-none-any.whl
-
-# COMMAND ----------
 # MAGIC %restart_python
 
 # COMMAND ----------
@@ -17,6 +15,7 @@ from databricks.sdk import WorkspaceClient
 from pyspark.sql import SparkSession
 
 from mlops_course.config import Tags, TimeseriesConfig
+from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 from mlops_course.serving.model_serving import ModelServing
 
 config = TimeseriesConfig.from_yaml('../project_config.yml')
@@ -37,7 +36,7 @@ os.environ["DBR_TOKEN"] = w.tokens.create(lifetime_seconds=1200).token_value
 # COMMAND ----------
 # Initialize feature store manager
 model_serving = ModelServing(
-    model_name=f"{config.dev_catalog}.{config.dev_schema}.house_prices_model_basic", endpoint_name="house-prices-model-serving"
+    model_name=f"{config.dev_catalog}.{config.dev_schema}.sewage_pump_rg_blauwe_keet", endpoint_name="sewage_pump_rg_blauwe_keet"
 )
 
 # COMMAND ----------
@@ -46,65 +45,21 @@ model_serving.deploy_or_update_serving_endpoint()
 
 
 # COMMAND ----------
-# Create a sample request body
-required_columns = [
-    "LotFrontage",
-    "LotArea",
-    "OverallQual",
-    "OverallCond",
-    "YearBuilt",
-    "YearRemodAdd",
-    "MasVnrArea",
-    "TotalBsmtSF",
-    "GrLivArea",
-    "GarageCars",
-    "MSZoning",
-    "Street",
-    "Alley",
-    "LotShape",
-    "LandContour",
-    "Neighborhood",
-    "Condition1",
-    "BldgType",
-    "HouseStyle",
-    "RoofStyle",
-    "Exterior1st",
-    "Exterior2nd",
-    "MasVnrType",
-    "Foundation",
-    "Heating",
-    "CentralAir",
-    "SaleType",
-    "SaleCondition",
-]
 
 # Sample 1000 records from the training set
 test_set = spark.table(f"{config.catalog_name}.{config.schema_name}.test_set").toPandas()
 
 # Sample 100 records from the training set
-sampled_records = test_set[required_columns].sample(n=100, replace=True).to_dict(orient="records")
+neural_model = NeuralProphetModel(config, tags, spark)
+neural_model.load_data()
+neural_model.feature_engineering_db()
+test_set = neural_model.Xy_test.drop(columns=["y"])
+
+sampled_records = test_set.sample(n=100, replace=True).to_dict(orient="records")
 dataframe_records = [[record] for record in sampled_records]
 
 # COMMAND ----------
 # Call the endpoint with one sample record
-
-"""
-Each dataframe record in the request body should be list of json with columns looking like:
-
-[{'LotFrontage': 78.0,
-  'LotArea': 9317,
-  'OverallQual': 6,
-  'OverallCond': 5,
-  'YearBuilt': 2006,
-  'Exterior1st': 'VinylSd',
-  'Exterior2nd': 'VinylSd',
-  'MasVnrType': 'None',
-  'Foundation': 'PConc',
-  'Heating': 'GasA',
-  'CentralAir': 'Y',
-  'SaleType': 'WD',
-  'SaleCondition': 'Normal'}]
-"""
 
 def call_endpoint(record) -> tuple[int, str]:
     """Call the model serving endpoint with a given input record."""

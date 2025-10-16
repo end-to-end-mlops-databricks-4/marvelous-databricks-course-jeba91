@@ -9,6 +9,7 @@ catalog_name, schema_name → Database schema names for Databricks tables.
 from datetime import datetime
 
 import mlflow
+import mlflow.pyfunc
 import pandas as pd
 from databricks import feature_engineering
 from databricks.feature_engineering import FeatureLookup
@@ -20,6 +21,36 @@ from pandas import DataFrame
 from pyspark.sql import SparkSession
 
 from mlops_course.config import Tags, TimeseriesConfig
+
+
+class CustomNeuralProphetPredictor(mlflow.pyfunc.PythonModel):
+    """MLflow wrapper for a single trained NeuralProphet model."""
+
+    def load_context(self, context: object) -> None:
+        """Load the trained NeuralProphet model from artifacts."""
+        # The 'np_model' artifact key must match what you log in log_model
+        self.np_model = context.artifacts["np_model"]
+
+    def predict(self, model_input: pd.DataFrame) -> pd.DataFrame:
+        """Setups custom data preparation and prediction logic.
+
+        Args:
+            context: Context from model serving endpoint
+            model_input: Pandas DataFrame created by MLflow from the serving request JSON.
+
+        """
+        # --- 1. Custom Data Loading/Preprocessing ---
+
+        # Ensure 'ds' column is in the correct datetime format
+        model_input["ds"] = pd.to_datetime(model_input["ds"])
+        model_input["precipitation"] = model_input["precipitation"].astype(float)
+
+        # --- 2. Prediction ---
+        # NeuralProphet's predict method takes the input dataframe directly
+        forecast = self.np_model.predict(model_input)
+
+        # Filter and return the relevant output columns
+        return forecast[["ds", "yhat1"]].rename(columns={"yhat1": "prediction"})
 
 
 class NeuralProphetModel:
@@ -240,8 +271,9 @@ class NeuralProphetModel:
                 self.nested_run_id[pump_code] = nested_run.info.run_id
 
                 df_features = self.prepare_sewagepump_set(pump_code, train_set=False)
-
                 test_results = self.np_model[pump_code].test(df_features)
+
+                df_features = df_features.drop(columns=["y"])
                 prediction = self.np_model[pump_code].predict(df_features)
 
                 mae_val = test_results["MAE_val"]
@@ -262,18 +294,23 @@ class NeuralProphetModel:
                 mlflow.log_metric("loss_test", regloss_test)
 
                 # Log the model
-                signature = infer_signature(model_input=df_features, model_output=prediction)
+                signature = infer_signature(model_input=df_features, model_output=prediction[["ds", "yhat1"]],)
                 dataset = mlflow.data.from_spark(
                     self.train_set_spark,
                     table_name=f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set",
                     version=self.data_version,
                 )
                 mlflow.log_input(dataset, context="training")
-                mlflow.pytorch.log_model(
-                    pytorch_model=self.np_model[pump_code].model,
-                    artifact_path="neuralprophet-model",
+
+                # Use mlflow.pyfunc.log_model with the custom PythonModel class
+                mlflow.pyfunc.log_model(
+                    python_model=CustomNeuralProphetPredictor(),
+                    artifact_path="neuralprophet-pyfunc-model",  # Use a distinct artifact path
+                    artifacts={"np_model": self.np_model[pump_code]}, # Log the full NeuralProphet object
                     signature=signature,
+                    # Optionally add dependencies here if needed, or rely on Databricks auto-detection
                 )
+                logger.info("✅ Full NeuralProphet model logged via custom pyfunc wrapper.")
 
     def register_model(self, pump_code: str) -> None:
         """Register model in Unity Catalog."""
