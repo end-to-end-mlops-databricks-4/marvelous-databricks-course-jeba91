@@ -1,7 +1,5 @@
 # Databricks notebook source
 # MAGIC %pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
-
-# COMMAND ----------
 # MAGIC %restart_python
 
 # COMMAND ----------

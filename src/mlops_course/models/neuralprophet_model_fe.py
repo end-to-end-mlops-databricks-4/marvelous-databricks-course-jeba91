@@ -88,10 +88,10 @@ class NeuralProphetModel:
         # Create a NeuralProphet model with default parameters
         m_weekday = NeuralProphet(growth="off", daily_seasonality=False, drop_missing=True, quantiles=quantiles)
         m_weekday.add_future_regressor("precipitation")
-        m_weekday.add_future_regressor("pump_capacity")
-        m_weekday.add_future_regressor("pump_residents")
-        m_weekday.add_future_regressor("pump_houses")
-        m_weekday.add_future_regressor("pump_age")
+        m_weekday.add_events("pump_capacity")
+        m_weekday.add_events("pump_residents")
+        m_weekday.add_events("pump_houses")
+        m_weekday.add_events("pump_age")
         m_weekday.add_country_holidays("NL")
         m_weekday.add_seasonality(name="daily_weekday", period=1, fourier_order=3, condition_name="weekday")
         m_weekday.add_seasonality(name="daily_weekend", period=1, fourier_order=3, condition_name="weekend")
@@ -211,9 +211,9 @@ class NeuralProphetModel:
         pumpcode_key = self.config.primary_keys[1]
 
         if train_set:
-            df_pump = self.Xy_train.loc[self.train_set[pumpcode_key] == pump_code]
+            df_pump = self.Xy_train.loc[self.Xy_train[pumpcode_key] == pump_code]
         else:
-            df_pump = self.Xy_test.loc[self.test_set[pumpcode_key] == pump_code]
+            df_pump = self.Xy_test.loc[self.Xy_test[pumpcode_key] == pump_code]
 
         return df_pump.drop(columns=pumpcode_key)
 
