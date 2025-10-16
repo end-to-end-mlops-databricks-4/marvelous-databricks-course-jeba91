@@ -294,7 +294,10 @@ class NeuralProphetModel:
                 mlflow.log_metric("loss_test", regloss_test)
 
                 # Log the model
-                signature = infer_signature(model_input=df_features, model_output=prediction[["ds", "yhat1"]],)
+                signature = infer_signature(
+                    model_input=df_features,
+                    model_output=prediction[["ds", "yhat1"]],
+                )
                 dataset = mlflow.data.from_spark(
                     self.train_set_spark,
                     table_name=f"{self.config.dev_catalog}.{self.config.dev_schema}.train_set",
@@ -306,7 +309,7 @@ class NeuralProphetModel:
                 mlflow.pyfunc.log_model(
                     python_model=CustomNeuralProphetPredictor(),
                     artifact_path="neuralprophet-pyfunc-model",  # Use a distinct artifact path
-                    artifacts={"np_model": self.np_model[pump_code]}, # Log the full NeuralProphet object
+                    artifacts={"np_model": self.np_model[pump_code]},  # Log the full NeuralProphet object
                     signature=signature,
                     # Optionally add dependencies here if needed, or rely on Databricks auto-detection
                 )
