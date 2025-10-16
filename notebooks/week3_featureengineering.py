@@ -2,6 +2,9 @@
 # MAGIC %pip install --force-reinstall mlops_course-0.0.1-py3-none-any.whl
 
 # COMMAND ----------
+# MAGIC %restart_python
+
+# COMMAND ----------
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
 
@@ -31,13 +34,16 @@ neural_model.create_pump_feature_table()
 neural_model.feature_engineering_db()
 
 # COMMAND ----------
-neural_model.train(config.pump_names[0])
+for pump_name in config.pump_names[:1]:
+    neural_model.train(pump_code=pump_name)
 
 # COMMAND ----------
-neural_model.log_model(config.pump_names[0])
+for pump_name in config.pump_names[:1]:
+    neural_model.log_model(pump_code=pump_name)
 
 # COMMAND ----------
-neural_model.register_model(config.pump_names[0])
-# COMMAND ----------
+for pump_name in config.pump_names[:1]:
+    neural_model.register_model(pump_code=pump_name)
 
+# COMMAND ----------
 print(neural_model.nested_run_id)

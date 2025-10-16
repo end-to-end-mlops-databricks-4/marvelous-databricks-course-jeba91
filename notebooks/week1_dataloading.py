@@ -1,6 +1,12 @@
 # Databricks notebook source
+# MAGIC %pip install mlops_course-0.0.1-py3-none-any.whl
+
+# Databricks notebook source
 # MAGIC %load_ext autoreload
 # MAGIC %autoreload 2
+
+# COMMAND ----------
+# MAGIC %restart_python
 
 # COMMAND ----------
 from pyspark.sql import SparkSession

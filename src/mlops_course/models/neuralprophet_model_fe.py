@@ -18,7 +18,6 @@ from mlflow.models import infer_signature
 from neuralprophet import NeuralProphet
 from pandas import DataFrame
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
 
 from mlops_course.config import Tags, TimeseriesConfig
 
@@ -89,6 +88,10 @@ class NeuralProphetModel:
         # Create a NeuralProphet model with default parameters
         m_weekday = NeuralProphet(growth="off", daily_seasonality=False, drop_missing=True, quantiles=quantiles)
         m_weekday.add_future_regressor("precipitation")
+        m_weekday.add_future_regressor("pump_capacity")
+        m_weekday.add_future_regressor("pump_residents")
+        m_weekday.add_future_regressor("pump_houses")
+        m_weekday.add_future_regressor("pump_age")
         m_weekday.add_country_holidays("NL")
         m_weekday.add_seasonality(name="daily_weekday", period=1, fourier_order=3, condition_name="weekday")
         m_weekday.add_seasonality(name="daily_weekend", period=1, fourier_order=3, condition_name="weekend")
@@ -219,7 +222,7 @@ class NeuralProphetModel:
         logger.info("🚀 Starting training...")
 
         self.np_model[pump_code] = self.model_weekend()
-        df_features = self.prepare_sewagepump_set(pump_code, train_mode=True)
+        df_features = self.prepare_sewagepump_set(pump_code, train_set=True)
         self.np_model[pump_code].fit(df_features)
 
     def log_model(self, pump_code: str) -> None:
@@ -236,7 +239,7 @@ class NeuralProphetModel:
             ) as nested_run:
                 self.nested_run_id[pump_code] = nested_run.info.run_id
 
-                df_features = self.prepare_sewagepump_set(pump_code, train_mode=False)
+                df_features = self.prepare_sewagepump_set(pump_code, train_set=False)
 
                 test_results = self.np_model[pump_code].test(df_features)
                 prediction = self.np_model[pump_code].predict(df_features)
