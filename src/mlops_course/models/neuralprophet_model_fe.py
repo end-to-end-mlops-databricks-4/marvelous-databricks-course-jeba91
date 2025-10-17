@@ -307,9 +307,36 @@ class NeuralProphetModel:
                 mlflow.log_input(dataset, context="training")
 
                 # 1. Save the full NeuralProphet object locally using NeuralProphet save
-                model_path = f"model_{pump_code}.np"
+                pump_code_str = pump_code.replace(" ", "_").replace(".", "_").replace("__", "_")
+                model_path = f"model_{pump_code_str}.np"
                 npsave(self.np_model[pump_code], model_path)
                 logger.info(f"💾 NeuralProphet model object saved to {model_path}")
+
+                conda_env = {
+                    "name": "mlflow-env",
+                    "channels": ["conda-forge"],
+                    "dependencies": [
+                        "python=3.12.3",
+                        "pip<=24.0",
+                        {
+                            "pip": [
+                                "mlflow==3.1.1",
+                                "astunparse==1.6.3",
+                                "cloudpickle==3.1.1",
+                                "ipython==8.25.0",
+                                "jaraco-collections==5.1.0",
+                                "matplotlib==3.10.7",
+                                "neuralprophet==0.8.0",
+                                "numpy==1.26.4",
+                                "pandas==2.3.0",
+                                "regex==2025.9.18",
+                                "scipy==1.16.0",
+                                "torch==2.5.1",
+                                "./code/mlops_course-0.0.1-py3-none-any.whl",
+                            ]
+                        },
+                    ],
+                }
 
                 # Use mlflow.pyfunc.log_model with the custom PythonModel class
                 mlflow.pyfunc.log_model(
@@ -317,13 +344,18 @@ class NeuralProphetModel:
                     artifact_path="neuralprophet-pyfunc-model",
                     artifacts={"model": model_path},
                     signature=signature,
+                    code_paths=["mlops_course-0.0.1-py3-none-any.whl"],
+                    conda_env=conda_env,
                 )
                 logger.info("✅ Full NeuralProphet model logged via custom pyfunc wrapper.")
 
     def register_model(self, pump_code: str) -> None:
         """Register model in Unity Catalog."""
         logger.info("🔄 Registering the model in UC...")
+
         pump_code_str = pump_code.replace(" ", "_").replace(".", "_").replace("__", "_")
+        self.tags["data_version"] = self.data_version
+
         registered_model = mlflow.register_model(
             model_uri=f"runs:/{self.nested_run_id[pump_code]}/neuralprophet-pyfunc-model",
             name=f"{self.config.dev_catalog}.{self.config.dev_schema}.sewage_pump_{pump_code_str}",

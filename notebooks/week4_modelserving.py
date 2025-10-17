@@ -7,6 +7,7 @@
 # MAGIC %autoreload 2
 
 # COMMAND ----------
+import json
 import os
 import time
 
@@ -18,7 +19,7 @@ from mlops_course.config import Tags, TimeseriesConfig
 from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 from mlops_course.serving.model_serving import ModelServing
 
-config = TimeseriesConfig.from_yaml('../project_config.yml')
+config = TimeseriesConfig.from_yaml("../project_config.yml")
 spark = SparkSession.builder.getOrCreate()
 
 tags = Tags(**{"git_sha": "abcd12345", "branch": "week2"})
@@ -36,7 +37,8 @@ os.environ["DBR_TOKEN"] = w.tokens.create(lifetime_seconds=1200).token_value
 # COMMAND ----------
 # Initialize feature store manager
 model_serving = ModelServing(
-    model_name=f"{config.dev_catalog}.{config.dev_schema}.sewage_pump_rg_blauwe_keet", endpoint_name="sewage_pump_rg_blauwe_keet"
+    model_name=f"{config.dev_catalog}.{config.dev_schema}.sewage_pump_rg_blauwe_keet",
+    endpoint_name="sewage_pump_rg_blauwe_keet",
 )
 
 # COMMAND ----------
@@ -46,41 +48,44 @@ model_serving.deploy_or_update_serving_endpoint()
 
 # COMMAND ----------
 
-# Sample 1000 records from the training set
-test_set = spark.table(f"{config.catalog_name}.{config.schema_name}.test_set").toPandas()
-
-# Sample 100 records from the training set
+# Sample 100 records from the test set
 neural_model = NeuralProphetModel(config, tags, spark)
 neural_model.load_data()
 neural_model.feature_engineering_db()
-test_set = neural_model.Xy_test.drop(columns=["y"])
+test_set = neural_model.Xy_test.drop(columns=["pumpcode"])
 
-sampled_records = test_set.sample(n=100, replace=True).to_dict(orient="records")
-dataframe_records = [[record] for record in sampled_records]
+test_set["ds"] = test_set["ds"].apply(lambda x: x.isoformat()).astype(str)
 
 # COMMAND ----------
-# Call the endpoint with one sample record
 
-def call_endpoint(record) -> tuple[int, str]:
+def call_endpoint(record: dict) -> tuple[int, str]:
     """Call the model serving endpoint with a given input record."""
-    serving_endpoint = f"https://{os.environ['DBR_HOST']}/serving-endpoints/house-prices-model-serving/invocations"
-
-    response = requests.post(
-        serving_endpoint,
-        headers={"Authorization": f"Bearer {os.environ['DBR_TOKEN']}"},
-        json={"dataframe_records": record},
+    serving_endpoint = (
+        "https://dbc-f122dc18-1b68.cloud.databricks.com/serving-endpoints/sewage_pump_rg_blauwe_keet/invocations"
     )
-    return response.status_code, response.text
+
+    try:
+        response = requests.post(
+            serving_endpoint,
+            headers={"Authorization": f"Bearer {os.environ['DBR_TOKEN']}"},
+            json=record,
+            timeout=300,
+        )
+
+        # Return the status code and the response body text
+        return response.status_code, response.text
+
+    except requests.exceptions.RequestException as e:
+        return 500, f"Request failed: {e}"
 
 
-status_code, response_text = call_endpoint(dataframe_records[0])
+# --- Example of Preparation and Calling ---
+split_payload = json.loads(test_set.iloc[:100].to_json(orient="split"))
+
+# 3. Create the final wrapped dictionary for the API call
+final_api_record = {"dataframe_split": split_payload}
+
+# 4. Call the endpoint
+status_code, response_text = call_endpoint(final_api_record)
 print(f"Response Status: {status_code}")
 print(f"Response Text: {response_text}")
-
-# COMMAND ----------
-# Load test
-for i in range(len(dataframe_records)):
-    status_code, response_text = call_endpoint(dataframe_records[i])
-    print(f"Response Status: {status_code}")
-    print(f"Response Text: {response_text}")
-    time.sleep(0.2)
