@@ -212,6 +212,11 @@ class TimeseriesDataLoader:
             df_events = neuralprophet_class.make_holiday_events()
             current_pump_df = temp_neuralprophet_model.create_df_with_events(current_pump_df, df_events)
 
+            # Remove empty feature columns created by model
+            current_pump_df = current_pump_df.drop(
+                columns=["pump_capacity", "pump_residents", "pump_houses", "pump_age"]
+            )
+
             # Append the current pump dataframe to our list
             pump_dataframes.append(current_pump_df)
 

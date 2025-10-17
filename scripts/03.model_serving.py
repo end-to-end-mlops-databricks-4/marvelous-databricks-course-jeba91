@@ -1,12 +1,4 @@
-# Databricks notebook source
-# MAGIC %pip install mlops_course-0.0.1-py3-none-any.whl
-# MAGIC %restart_python
-
-# COMMAND ----------
-# MAGIC %load_ext autoreload
-# MAGIC %autoreload 2
-
-# COMMAND ----------
+import argparse
 import json
 import os
 
@@ -18,13 +10,39 @@ from mlops_course.config import Tags, TimeseriesConfig
 from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 from mlops_course.serving.model_serving import ModelServing
 
-config = TimeseriesConfig.from_yaml("../project_config.yml")
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--root_path",
+    action="store",
+    default=None,
+    type=str,
+    required=True,
+)
+
+parser.add_argument(
+    "--env",
+    action="store",
+    default=None,
+    type=str,
+    required=True,
+)
+
+parser.add_argument(
+    "--is_test",
+    action="store",
+    default=0,
+    type=int,
+    required=True,
+)
+
+args = parser.parse_args()
+root_path = args.root_path
+config_path = f"{root_path}/files/project_config.yml"
+config = TimeseriesConfig.from_yaml(config_path)
+
 spark = SparkSession.builder.getOrCreate()
 
 tags = Tags(**{"git_sha": "abcd12345", "branch": "week2"})
-
-
-# COMMAND ----------
 
 spark = SparkSession.builder.getOrCreate()
 
@@ -32,20 +50,14 @@ w = WorkspaceClient()
 os.environ["DBR_HOST"] = w.config.host
 os.environ["DBR_TOKEN"] = w.tokens.create(lifetime_seconds=1200).token_value
 
-
-# COMMAND ----------
 # Initialize feature store manager
 model_serving = ModelServing(
     model_name=f"{config.dev_catalog}.{config.dev_schema}.sewage_pump_rg_blauwe_keet",
     endpoint_name="sewage_pump_rg_blauwe_keet",
 )
 
-# COMMAND ----------
 # Deploy the model serving endpoint
 model_serving.deploy_or_update_serving_endpoint()
-
-
-# COMMAND ----------
 
 # Sample 100 records from the test set
 neural_model = NeuralProphetModel(config, tags, spark)
@@ -55,7 +67,6 @@ test_set = neural_model.Xy_test.drop(columns=["pumpcode"])
 
 test_set["ds"] = test_set["ds"].apply(lambda x: x.isoformat()).astype(str)
 
-# COMMAND ----------
 
 def call_endpoint(record: dict) -> tuple[int, str]:
     """Call the model serving endpoint with a given input record."""
