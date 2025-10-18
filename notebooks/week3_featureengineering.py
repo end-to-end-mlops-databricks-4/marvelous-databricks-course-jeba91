@@ -17,7 +17,7 @@ from mlops_course.models.neuralprophet_model_fe import NeuralProphetModel
 mlflow.set_tracking_uri("databricks")
 mlflow.set_registry_uri("databricks-uc")
 
-config = TimeseriesConfig.from_yaml('../project_config.yml')
+config = TimeseriesConfig.from_yaml("../project_config.yml")
 spark = SparkSession.builder.getOrCreate()
 
 tags = Tags(**{"git_sha": "abcd12345", "branch": "week2"})

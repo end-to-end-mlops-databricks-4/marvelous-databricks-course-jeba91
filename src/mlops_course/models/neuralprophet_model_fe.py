@@ -344,7 +344,9 @@ class NeuralProphetModel:
                     artifact_path="neuralprophet-pyfunc-model",
                     artifacts={"model": model_path},
                     signature=signature,
-                    code_paths=["/Workspace/Users/j.baars@hhnk.nl/.bundle/marvelous-databricks-course-jeba91/dev/files/notebooks/mlops_course-0.0.1-py3-none-any.whl"],
+                    code_paths=[
+                        "/Workspace/Users/j.baars@hhnk.nl/.bundle/marvelous-databricks-course-jeba91/dev/files/notebooks/mlops_course-0.0.1-py3-none-any.whl"
+                    ],
                     conda_env=conda_env,
                 )
                 logger.info("✅ Full NeuralProphet model logged via custom pyfunc wrapper.")

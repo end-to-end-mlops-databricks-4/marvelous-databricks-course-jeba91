@@ -57,6 +57,7 @@ test_set["ds"] = test_set["ds"].apply(lambda x: x.isoformat()).astype(str)
 
 # COMMAND ----------
 
+
 def call_endpoint(record: dict) -> tuple[int, str]:
     """Call the model serving endpoint with a given input record."""
     serving_endpoint = (

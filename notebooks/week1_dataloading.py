@@ -14,7 +14,7 @@ from pyspark.sql import SparkSession
 from mlops_course.config import Tags, TimeseriesConfig
 from mlops_course.data_loader import TimeseriesDataLoader
 
-config = TimeseriesConfig.from_yaml('../project_config.yml')
+config = TimeseriesConfig.from_yaml("../project_config.yml")
 spark = SparkSession.builder.getOrCreate()
 tags = Tags(**{"git_sha": "abcd12345", "branch": "week2"})
 
