@@ -73,7 +73,7 @@ resources:
               - "--is_test"
               - "${var.is_test}"
           libraries:
-           - whl: ./dist/*.whl
+            - whl: ./dist/*.whl
         - task_key: "model_registering"
           # job_cluster_key: "house-price-cluster"
           existing_cluster_id: "0902-120342-tte4270t"
@@ -89,7 +89,7 @@ resources:
               - "--is_test"
               - "${var.is_test}"
           libraries:
-           - whl: ./dist/*.whl
+            - whl: ./dist/*.whl
         - task_key: "model_serving"
           # job_cluster_key: "house-price-cluster"
           existing_cluster_id: "0902-120342-tte4270t"
@@ -105,7 +105,7 @@ resources:
               - "--is_test"
               - "${var.is_test}"
           libraries:
-           - whl: ./dist/*.whl
+            - whl: ./dist/*.whl
 targets:
   dev:
     cluster_id: 0909-151137-wx3ctt9r #replace with your own!
@@ -147,7 +147,6 @@ targets:
   #     schedule_pause_status: PAUSED
   #     is_test: 1
   #     env: acc
-
 
   # prd:
   #   cluster_id: 0902-120342-tte4270t #replace with your own!
